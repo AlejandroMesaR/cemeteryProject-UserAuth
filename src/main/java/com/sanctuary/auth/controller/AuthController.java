@@ -10,8 +10,12 @@ import com.sanctuary.auth.security.JwtService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.web.bind.annotation.*;
+import com.sanctuary.auth.dto.UserShowRequest;
+import java.util.List;
+import java.util.stream.Collectors;
 
 import java.util.Optional;
 import java.util.Collections;
@@ -84,10 +88,84 @@ public class AuthController {
         UserDetails userDetails = new User(
                 appUser.getUsername(),
                 appUser.getPassword(),
-                Collections.singletonList(() -> "ROLE_" + appUser.getRole().name()) // Asigna el rol
+                Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + appUser.getRole().name()))
+
         );
 
         String token = jwtService.generateToken(userDetails);
-        return ResponseEntity.ok(new AuthResponse(token));
+        return ResponseEntity.ok(new AuthResponse(token));        
     }
+
+
+    /** Endpoint para obtener todos los usuarios sin mostrar sus contraseñas */
+    @GetMapping("/allUsers")
+    public ResponseEntity<List<UserShowRequest>> getAllUsers() {
+        List<AppUser> users = userRepository.findAll();
+        
+        List<UserShowRequest> userDTOs = users.stream()
+            .map(user -> new UserShowRequest(
+                user.getId(),
+                user.getUsername(),
+                user.getEmail(),
+                user.getIdentificationNumber(),
+                user.getRole()
+            ))
+            .collect(Collectors.toList());
+        
+        return ResponseEntity.ok(userDTOs);
+    }
+
+
+    /** Endpoint para actualizar un usuario existente */
+    @PutMapping("/{id}")
+    public ResponseEntity<?> updateUser(@PathVariable Long id, @RequestBody RegisterRequest request) {
+        Optional<AppUser> userOptional = userRepository.findById(id);
+        
+        if (userOptional.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        
+        AppUser user = userOptional.get();
+        
+        // Actualizar los campos del usuario
+        if (request.getUsername() != null && !request.getUsername().isEmpty()) {
+            // Verificar si el nuevo username ya existe y no pertenece a este usuario
+            Optional<AppUser> existingUser = userRepository.findByUsername(request.getUsername());
+            if (existingUser.isPresent() && !existingUser.get().getId().equals(id)) {
+                return ResponseEntity.badRequest().body("El nombre de usuario ya está en uso.");
+            }
+            user.setUsername(request.getUsername());
+        }
+        
+        if (request.getEmail() != null && !request.getEmail().isEmpty()) {
+            user.setEmail(request.getEmail());
+        }
+        
+        if (request.getIdentificationNumber() != null && !request.getIdentificationNumber().isEmpty()) {
+            user.setIdentificationNumber(request.getIdentificationNumber());
+        }
+        
+        if (request.getPassword() != null && !request.getPassword().isEmpty()) {
+            user.setPassword(passwordEncoder.encode(request.getPassword()));
+        }
+        
+        // No actualizamos el rol por seguridad, a menos que se implemente un endpoint específico para eso
+        
+        userRepository.save(user);
+        return ResponseEntity.ok("Usuario actualizado exitosamente.");
+    }
+
+    /** Endpoint para eliminar un usuario */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> deleteUser(@PathVariable Long id) {
+        if (!userRepository.existsById(id)) {
+            return ResponseEntity.notFound().build();
+        }
+
+        System.out.println("deleteUser "+id);
+        
+        userRepository.deleteById(id);
+        return ResponseEntity.ok("Usuario eliminado exitosamente.");
+    }
+    
 }
