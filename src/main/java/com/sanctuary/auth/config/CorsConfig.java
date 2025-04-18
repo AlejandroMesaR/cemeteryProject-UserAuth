@@ -30,6 +30,7 @@ public class CorsConfig {
         // Permite cookies (si las necesitas)
         config.setAllowCredentials(true);
         
+        
         source.registerCorsConfiguration("/api/**", config);
         return new CorsFilter(source);
     }
